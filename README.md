@@ -1,6 +1,6 @@
 # File Conversion Tools for NUSC
 
-Maintainer: Jonathan Williams
+Maintainer: Jonathan Williams, Aaron Chester
 
 
 ## Description

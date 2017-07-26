@@ -18,7 +18,6 @@ all:
 	cd tree2mca && make
 	cd tree2doppler_map && make
 	cd tree2mca_gated && make
-	cd tree2fmca_gated && make
 	cd tree2mca_group && make
 	cd tree2tree && make
 	cd tree_gate_intensity && make
