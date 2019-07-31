@@ -39,4 +39,5 @@ double binSize=1.0;
 double max_x;
 bool use_max_x=false;
 
+int mcaHist[NSPECT][S32K];
 int outHist[NSPECT][S32K];

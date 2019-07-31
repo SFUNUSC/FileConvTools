@@ -17,7 +17,7 @@ void readConfigFile(const char * fileName,const char *configType)
             {
               if(strcmp(str1,"SORT_PATH")==0)
                 strcpy(sort_path,str2);
-	      if(strcmp(str1,"WEIGHT_PATH")==0)
+	            if(strcmp(str1,"WEIGHT_PATH")==0)
                 strcpy(weight_path,str2);
               if(strcmp(str1,"GATE_PATH")==0)
                 strcpy(gate_path,str2);

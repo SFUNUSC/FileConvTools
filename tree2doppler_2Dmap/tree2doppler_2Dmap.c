@@ -1,4 +1,4 @@
-#include "tree2doppler_map.h"
+#include "tree2doppler_2Dmap.h"
 #include "read_config.c"
 
 char str[256];
@@ -20,11 +20,14 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < 17; i++)
     for (int j = 0; j < 4; j++)
       for (int k = 0; k < 129; k++) {
-        dopplerFactor[i][j][k] = 0.; // initialize all elements to 0
-        counter[i][j][k] = 0;
+        for (int l = 0; l < 129; l++) {
+          dopplerFactor[i][j][k][l] = 0.; // initialize all elements to 0
+          counter[i][j][k][l] = 0;
+        }
+        
       }
 
-  d = new TH2D("DopplerFactor", "DopplerFactor", 64, 1, 64, 128, 1, 128);
+  d = new TH2D("DopplerFactor", "DopplerFactor", 64, 1, 64, 16384, 1, 16384);
   d1 = new TH1D("DopplerHist", "DopplerHist", 100, 0.940, 1.06);
 
   if (argc != 2) {
@@ -33,6 +36,8 @@ int main(int argc, char *argv[]) {
            "TIGRESS-CsI Doppler shift groups defined via a group map.\n\n");
     exit(-1);
   }
+
+  
 
   readConfigFile(argv[1]); // grab data from the parameter file
 
@@ -228,7 +233,7 @@ int main(int argc, char *argv[]) {
 // the output histogram.
 void addTreeDataToOutHist() {
   Double_t df_value, weight_value;
-  Int_t pos, col, csi;
+  Int_t pos, col, csi1, csi2;
 
   for (int i = 0; i < stree->GetEntries(); i++) {
     stree->GetEntry(i);
@@ -240,10 +245,13 @@ void addTreeDataToOutHist() {
       weight_value = 1.;
     pos = posLeaf->GetValue(0);
     col = colLeaf->GetValue(0);
-    csi = csiLeaf->GetValue(0); // recoil in csi only once per event
-    dopplerFactor[pos][col][csi] += weight_value * df_value; // weighted average
-    counter[pos][col][csi] += weight_value;
-    d1->Fill(df_value, weight_value);
+    csi1 = csiLeaf->GetValue(0);
+    if(csiLeaf->GetNdata()>1){
+      csi2 = csiLeaf->GetValue(1); // second csi hit
+      dopplerFactor[pos][col][csi1][csi2] += weight_value * df_value; // weighted average
+      counter[pos][col][csi1][csi2] += weight_value;
+      d1->Fill(df_value, weight_value);
+    }
     /* printf("pos %2d col %1d csi %2d df %.4f w
      * %.4f\n",pos,col,csi,df_value,weight_value); */
     /* getc(stdin); */
@@ -253,36 +261,39 @@ void addTreeDataToOutHist() {
 void writeGroupMap() {
   FILE *group_map;
   FILE *df_map;
-  int tig, group;
+  int tig, csiInd, group;
 
   df_map = fopen("Doppler_shift_map.par", "w");
   fprintf(df_map,
           "This is a Doppler shift map for the TIGRESS and CsI array\n");
-  fprintf(df_map, "pos   col    csi    df\n");
+  fprintf(df_map, "pos   col    csi1    csi2    df\n");
 
   group_map = fopen("Doppler_shift_group_map.par", "w");
   fprintf(group_map,
           "This is a Doppler shift group map for the TIGRESS and CsI array\n");
-  fprintf(group_map, "pos   col    csi    group\n");
+  fprintf(group_map, "pos   col    csi1    csi2    group\n");
 
   for (int i = 1; i < 17; i++)
     for (int j = 0; j < 4; j++)
       for (int k = 1; k < 129; k++) {
-        if (counter[i][j][k] > 0.) {
+        for (int l = 1; l < 129; l++) {
+
+          if (counter[i][j][k][l] > 0.) {
           // nan check on df
-          if (dopplerFactor[i][j][k] != dopplerFactor[i][j][k]) {
+          if (dopplerFactor[i][j][k][l] != dopplerFactor[i][j][k][l]) {
             printf(
-                "dopplerFactor[%d][%d][%d] = %f with counter[%d][%d][%d] %f\n",
-                i, j, k, dopplerFactor[i][j][k], i, j, k, counter[i][j][k]);
+                "dopplerFactor[%d][%d][%d][%d] = %f with counter[%d][%d][%d][%d] %f\n",
+                i, j, k, l, dopplerFactor[i][j][k][l], i, j, k, l, counter[i][j][k][l]);
             exit(EXIT_FAILURE);
           }
-          dopplerFactor[i][j][k] /= counter[i][j][k]; // weighted average
+          dopplerFactor[i][j][k][l] /= counter[i][j][k][l]; // weighted average
           tig = (i - 1) * 4 + j;
+          csiInd = (k - 1) * 128 + l;
 
           // tig [1,...,64] csi [1,...,24] due to root binning from -1 (!)
-          d->SetBinContent(tig + 1, k, dopplerFactor[i][j][k]);
-          fprintf(df_map, "%2d     %d     %2d     %7.6f\n", i, j, k,
-                  dopplerFactor[i][j][k]);
+          d->SetBinContent(tig + 1, csiInd, dopplerFactor[i][j][k][l]);
+          fprintf(df_map, "%2d     %d     %2d     %2d     %7.6f\n", i, j, k, l, 
+                  dopplerFactor[i][j][k][l]);
 
           // make the groups
           /***********************
@@ -308,30 +319,32 @@ void writeGroupMap() {
           5  0.982 <= D
            **********************/
 
-          if (dopplerFactor[i][j][k] > dg1) {
+          if (dopplerFactor[i][j][k][l] > dg1) {
             group = 1;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
+            fprintf(group_map, "%2d     %d     %2d     %2d     %d\n", i, j, k, l, group);
           }
-          if (dopplerFactor[i][j][k] > dg2 && dopplerFactor[i][j][k] <= dg1) {
+          if (dopplerFactor[i][j][k][l] > dg2 && dopplerFactor[i][j][k][l] <= dg1) {
             group = 2;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
+            fprintf(group_map, "%2d     %d     %2d     %2d     %d\n", i, j, k, l, group);
           }
-          if (dopplerFactor[i][j][k] > dg3 && dopplerFactor[i][j][k] <= dg2) {
+          if (dopplerFactor[i][j][k][l] > dg3 && dopplerFactor[i][j][k][l] <= dg2) {
             group = 3;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
+            fprintf(group_map, "%2d     %d     %2d     %2d     %d\n", i, j, k, l, group);
           }
-          if (dopplerFactor[i][j][k] > dg4 && dopplerFactor[i][j][k] <= dg3) {
+          if (dopplerFactor[i][j][k][l] > dg4 && dopplerFactor[i][j][k][l] <= dg3) {
             group = 4;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
+            fprintf(group_map, "%2d     %d     %2d     %2d     %d\n", i, j, k, l, group);
           }
-          if (dopplerFactor[i][j][k] > dg5 && dopplerFactor[i][j][k] <= dg4) {
+          if (dopplerFactor[i][j][k][l] > dg5 && dopplerFactor[i][j][k][l] <= dg4) {
             group = 5;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
+            fprintf(group_map, "%2d     %d     %2d     %2d     %d\n", i, j, k, l, group);
           }
-          if (dopplerFactor[i][j][k] <= dg5) {
+          if (dopplerFactor[i][j][k][l] <= dg5) {
             group = 6;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
+            fprintf(group_map, "%2d     %d     %2d     %2d     %d\n", i, j, k, l, group);
           }
+        }
+        
         }
       }
   fclose(df_map);

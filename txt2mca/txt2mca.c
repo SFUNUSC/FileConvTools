@@ -5,6 +5,43 @@ double ch[S32K],val[S32K];
 char str[2][256];
 FILE *input;
 
+int readMCA(FILE* inp,char* filename,float inpHist[NSPECT][S32K])
+{
+	int num_spect=0;
+  for (int i=0; i<NSPECT; i++)
+    if(fread(mcaHist[i],S32K*sizeof(int),1,inp)!=1)
+      {
+      	num_spect=i;
+				break; // dont read in more spectra than there are in the input file
+				/* printf("ERROR: Error reading file %s!\n",filename); */
+				/* printf("For i=%d fread(mcaHist[i],S32K*sizeof(int),1,inp)=%lu\n",i,fread(mcaHist[i],S32K*sizeof(int),1,inp)); */
+				/* exit(-1); */
+      }
+ 
+  for (int i=0; i<NSPECT; i++)
+    for (int j=0; j<S32K; j++)
+      inpHist[i][j]=(float)mcaHist[i][j];
+
+  return num_spect;
+}
+
+/*******************************************************************************/
+int readFMCA(FILE* inp,char* filename,float inpHist[NSPECT][S32K])
+{
+	int num_spect=0;
+  for (int i=0; i<NSPECT; i++)
+    if(fread(inpHist[i],S32K*sizeof(float),1,inp)!=1)
+      {
+      	num_spect=i;
+				break; // dont read in more spectra than there are in the input file
+				/* printf("ERROR: Error reading file %s!\n",filename); */
+				/* printf("For i=%d fread(inpHist[i],S32K*sizeof(float),1,inp)=%lu\n",i,fread(inpHist[i],S32K*sizeof(float),1,inp)); */
+				/* exit(-1); */
+      }
+
+  return num_spect;
+}
+
 int main(int argc, char *argv[])
 {
   

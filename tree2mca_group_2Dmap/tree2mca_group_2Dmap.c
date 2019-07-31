@@ -1,4 +1,4 @@
-#include "tree2doppler_map.h"
+#include "tree2mca_group_2Dmap.h"
 #include "read_config.c"
 
 char str[256];
@@ -13,19 +13,9 @@ int main(int argc, char *argv[]) {
   char *av[10];
   theApp = new TApplication("App", &ac, av);
 
-  FILE *list;
+  FILE *list, *output;
   TFile *inp;
-
-  // initialize histograms
-  for (int i = 0; i < 17; i++)
-    for (int j = 0; j < 4; j++)
-      for (int k = 0; k < 129; k++) {
-        dopplerFactor[i][j][k] = 0.; // initialize all elements to 0
-        counter[i][j][k] = 0;
-      }
-
-  d = new TH2D("DopplerFactor", "DopplerFactor", 64, 1, 64, 128, 1, 128);
-  d1 = new TH1D("DopplerHist", "DopplerHist", 100, 0.940, 1.06);
+  randGen = new TRandom3();
 
   if (argc != 2) {
     printf("\ntree2mca_group parameter_file\n");
@@ -34,7 +24,14 @@ int main(int argc, char *argv[]) {
     exit(-1);
   }
 
-  readConfigFile(argv[1]); // grab data from the parameter file
+  readConfigFile(argv[1], "tree2mca_group"); // grab data from the parameter
+                                             // file
+
+  // initialize histograms
+  for (int i = 0; i < NSPECT; i++)
+    for (int j = 0; j < S32K; j++) {
+      outHist[i][j] = 0; // initialize all elements to 0
+    }
 
   // sort list of ROOT files
   if (listMode == true) {
@@ -44,7 +41,7 @@ int main(int argc, char *argv[]) {
       exit(-1);
     }
     // scan the list file for ROOT files and put their data into the output
-    // histogram
+    // hitogram
     while (fscanf(list, "%s", str) != EOF) {
       inp = new TFile(str, "read");
       if ((stree = (TTree *)inp->Get(sort_tree_name)) == NULL) {
@@ -76,13 +73,12 @@ int main(int argc, char *argv[]) {
                 ->First(); // get the first leaf from the specified branch
 
       // weight leaf
-      if (use_weights) {
+      if(use_weights) {
         if ((weightLeaf = stree->GetLeaf(weight_path)) == NULL)
           if ((weightBranch = stree->GetBranch(weight_path)) == NULL) {
-            printf(
-                "ERROR: Weight data path '%s' doesn't correspond to a branch "
-                "or leaf in the tree!\n",
-                weight_path);
+            printf("ERROR: Weight data path '%s' doesn't correspond to a branch "
+                  "or leaf in the tree!\n",
+                  weight_path);
             exit(-1);
           }
         if (weightLeaf == NULL)
@@ -128,12 +124,36 @@ int main(int argc, char *argv[]) {
 
       printf("Paths to sort data set.\n");
       printf("Number of tree entries: %Ld\n", stree->GetEntries());
+      /* printf("%Ld\n",stree->GetEntries()); */
 
+      readGroupMap();
       addTreeDataToOutHist();
+
+      // save results to individual .mca files if applicable
+      if (output_specified == false) {
+        if ((output = fopen(strcat(str, ".mca"), "w")) == NULL) {
+          printf("ERROR: Cannot open the output .mca file %s!\n",
+                 strcat(str, ".mca"));
+          exit(-1);
+        }
+        for (int i = 0; i < NSPECT; i++) {
+          fwrite(outHist[i], S32K * sizeof(int), 1, output);
+        }
+        fclose(output);
+
+        // reset the output histogram
+        for (int i = 0; i < NSPECT; i++)
+          for (int j = 0; j < S32K; j++) {
+            outHist[i][j] = 0;
+          }
+      }
     }
     fclose(list);
-  } else {
-    // not list mode, single ROOT tree file
+  }
+
+  // sort a single ROOT file
+  if (listMode == false) {
+    // read in tree file
     inp = new TFile(inp_filename, "read");
     if ((stree = (TTree *)inp->Get(sort_tree_name)) == NULL) {
       printf("The specified tree named %s doesn't exist, trying default name "
@@ -148,9 +168,8 @@ int main(int argc, char *argv[]) {
         exit(-1);
       }
     }
-    printf("Tree in %s read out.\n", str);
+    printf("Tree in %s read out.\n", inp_filename);
 
-    // sort leaf (energy)
     if ((sortLeaf = stree->GetLeaf(sort_path)) == NULL)
       if ((sortBranch = stree->GetBranch(sort_path)) == NULL) {
         printf("ERROR: Sort data path '%s' doesn't correspond to a branch or "
@@ -166,9 +185,9 @@ int main(int argc, char *argv[]) {
     if (use_weights) {
       if ((weightLeaf = stree->GetLeaf(weight_path)) == NULL)
         if ((weightBranch = stree->GetBranch(weight_path)) == NULL) {
-          printf("ERROR: Weight data path '%s' doesn't correspond to a branch "
-                 "or leaf in the tree!\n",
-                 weight_path);
+          printf("ERROR: Weight data path '%s' doesn't correspond to a branch or "
+                "leaf in the tree!\n",
+                weight_path);
           exit(-1);
         }
       if (weightLeaf == NULL)
@@ -176,7 +195,6 @@ int main(int argc, char *argv[]) {
             (TLeaf *)weightBranch->GetListOfLeaves()
                 ->First(); // get the first leaf from the specified branch
     }
-    // position leaf
     if ((posLeaf = stree->GetLeaf(pos_path)) == NULL)
       if ((posBranch = stree->GetBranch(pos_path)) == NULL) {
         printf("ERROR: Pos data path '%s' doesn't correspond to a branch or "
@@ -188,7 +206,6 @@ int main(int argc, char *argv[]) {
       posLeaf = (TLeaf *)posBranch->GetListOfLeaves()
                     ->First(); // get the first leaf from the specified branch
 
-    // color leaf
     if ((colLeaf = stree->GetLeaf(col_path)) == NULL)
       if ((colBranch = stree->GetBranch(col_path)) == NULL) {
         printf("ERROR: Col data path '%s' doesn't correspond to a branch or "
@@ -200,7 +217,6 @@ int main(int argc, char *argv[]) {
       colLeaf = (TLeaf *)colBranch->GetListOfLeaves()
                     ->First(); // get the first leaf from the specified branch
 
-    // csi leaf
     if ((csiLeaf = stree->GetLeaf(csi_path)) == NULL)
       if ((csiBranch = stree->GetBranch(csi_path)) == NULL) {
         printf("ERROR: CsI data path '%s' doesn't correspond to a branch or "
@@ -215,137 +231,131 @@ int main(int argc, char *argv[]) {
     printf("Paths to sort data set.\n");
     printf("Number of tree entries: %Ld\n", stree->GetEntries());
 
+    readGroupMap();
     addTreeDataToOutHist();
   }
 
-  writeGroupMap();
+  // write the output histogram to disk
+  if ((output = fopen(out_filename, "w")) == NULL) {
+    printf("ERROR: Cannot open the output .mca file!\n");
+    exit(-1);
+  }
 
-  return 0;
+  for (int i = 0; i < NSPECT; i++) {
+    fwrite(outHist[i], S32K * sizeof(int), 1, output);
+  }
+  fclose(output);
+
+  return 0; // great success
 }
 
 // This function extracts data from the tree after
 // the tree addresses have been set and puts it in
 // the output histogram.
 void addTreeDataToOutHist() {
-  Double_t df_value, weight_value;
-  Int_t pos, col, csi;
+  Double_t sort_value, weight_value;
+  Int_t pos, col, csi1, csi2, group;
+  double histVal;
 
   for (int i = 0; i < stree->GetEntries(); i++) {
     stree->GetEntry(i);
-    // first value only for first interaction which defines the decay
-    df_value = sortLeaf->GetValue(0); // in keV
-    if (use_weights)
-      weight_value = weightLeaf->GetValue(0); // weight
-    else
-      weight_value = 1.;
-    pos = posLeaf->GetValue(0);
-    col = colLeaf->GetValue(0);
-    csi = csiLeaf->GetValue(0); // recoil in csi only once per event
-    dopplerFactor[pos][col][csi] += weight_value * df_value; // weighted average
-    counter[pos][col][csi] += weight_value;
-    d1->Fill(df_value, weight_value);
-    /* printf("pos %2d col %1d csi %2d df %.4f w
-     * %.4f\n",pos,col,csi,df_value,weight_value); */
-    /* getc(stdin); */
+    for (int j = 0; j < sortLeaf->GetLen(); j++) {
+      sort_value = sortLeaf->GetValue(j);     // in keV
+      if (use_weights)
+        weight_value = weightLeaf->GetValue(j); // weight
+      else
+        weight_value = 1.;
+      pos = posLeaf->GetValue(j);
+      col = colLeaf->GetValue(j);
+      csi1 = csiLeaf->GetValue(0);
+      if(csiLeaf->GetNdata()>1){
+        csi2 = csiLeaf->GetValue(1);
+        group = group_map[pos][col][csi1][csi2];
+
+        //int hpge = (pos - 1) * 4 + col; // 0-3 pos1, 4-7 pos2, etc.
+        
+        if (sort_value >= 0.0) {
+          if (fwhmResponse == false)
+            histVal = sort_value * sort_scaling + sort_shift;
+          else {
+            histVal = FWHM_response(sort_value);
+            histVal = histVal * sort_scaling + sort_shift;
+          }
+
+          if(group<NSPECT)
+            if (histVal >= 0.0)
+              if (histVal < S32K)
+                outHist[group][(int)(histVal)] +=
+                    (int)weight_value; // fill the output histogram
+        }
+      }
+    }
   }
 }
 
-void writeGroupMap() {
-  FILE *group_map;
-  FILE *df_map;
-  int tig, group;
+void readGroupMap() {
+  FILE *inp;
+  char line[132];
+  int pos, col, csi1, csi2, group;
 
-  df_map = fopen("Doppler_shift_map.par", "w");
-  fprintf(df_map,
-          "This is a Doppler shift map for the TIGRESS and CsI array\n");
-  fprintf(df_map, "pos   col    csi    df\n");
+  if ((inp = fopen(group_file, "r")) == NULL) {
+    printf("\nI can't open file %s\n", group_file);
+    exit(1);
+  }
+  /* printf("\nTIGRESS-CsI group map read from the file %s\n",group_file); */
 
-  group_map = fopen("Doppler_shift_group_map.par", "w");
-  fprintf(group_map,
-          "This is a Doppler shift group map for the TIGRESS and CsI array\n");
-  fprintf(group_map, "pos   col    csi    group\n");
+  if (fgets(line, 132, inp) != NULL) {
+    if (fgets(line, 132, inp) != NULL)
+      while (fscanf(inp, "%d %d %d %d %d", &pos, &col, &csi1, &csi2, &group) != EOF)
+        if (csi1 >= 1 && csi1 <= 128)
+          if (csi2 >= 1 && csi2 <= 128)
+            if (pos >= 1 && pos <= 16)
+              if (col >= 0 && col <= 3)
+                group_map[pos][col][csi1][csi2] = group;
 
-  for (int i = 1; i < 17; i++)
-    for (int j = 0; j < 4; j++)
-      for (int k = 1; k < 129; k++) {
-        if (counter[i][j][k] > 0.) {
-          // nan check on df
-          if (dopplerFactor[i][j][k] != dopplerFactor[i][j][k]) {
-            printf(
-                "dopplerFactor[%d][%d][%d] = %f with counter[%d][%d][%d] %f\n",
-                i, j, k, dopplerFactor[i][j][k], i, j, k, counter[i][j][k]);
-            exit(EXIT_FAILURE);
-          }
-          dopplerFactor[i][j][k] /= counter[i][j][k]; // weighted average
-          tig = (i - 1) * 4 + j;
+  } else {
+    printf("Wrong structure of file %s\n", group_file);
+    printf("Aborting sort\n");
+    exit(1);
+  }
+  fclose(inp);
+}
 
-          // tig [1,...,64] csi [1,...,24] due to root binning from -1 (!)
-          d->SetBinContent(tig + 1, k, dopplerFactor[i][j][k]);
-          fprintf(df_map, "%2d     %d     %2d     %7.6f\n", i, j, k,
-                  dopplerFactor[i][j][k]);
+double FWHM_response(double ch_in) {
+  if (ch_in == 0.)
+    return ch_in;
 
-          // make the groups
-          /***********************
-          For 94Sr:
-          1           D  >  1.025
-          2  1.012 <  D  <= 1.025
-          3  0.986 <  D  <= 1.012
-          4  0.975 <  D  <= 0.986
-          5  0.975 <= D
+  double ch_out, fwhm, sigma, ch;
+  double roll = randGen->Uniform();
 
-          For 84Kr:
-          1           D  >  1.023
-          2  1.010 <  D  <= 1.023
-          3  0.990 <  D  <= 1.010
-          4  0.978 <  D  <= 0.990
-          5  0.978 <= D
+  if ((wL > 0.0) || (wH > 0.0)) // gaussian with exponential tail(s)
+  {
+    if (roll < wG) // gaussian response
+    {
+      ch = ch_in / 1000.;
+      fwhm = sqrt(fwhmF * fwhmF + fwhmG * fwhmG * ch + fwhmH * fwhmH * ch * ch);
+      sigma = fwhm / 2.35482;
+      if (sigma > 0)
+        ch_out = randGen->Gaus(ch_in, sigma);
+      else
+        ch_out = ch_in;
+    } else if (roll < (wG + wH)) // high energy exponential response
+    {
+      ch_out = ch_in + randGen->Exp(fwhmTauH);
+    } else // low energy exponential response
+    {
+      ch_out = ch_in - randGen->Exp(fwhmTauL);
+    }
+  } else // gaussian only
+  {
+    ch = ch_in / 1000.;
+    fwhm = sqrt(fwhmF * fwhmF + fwhmG * fwhmG * ch + fwhmH * fwhmH * ch * ch);
+    sigma = fwhm / 2.35482;
+    if (sigma > 0)
+      ch_out = randGen->Gaus(ch_in, sigma);
+    else
+      ch_out = ch_in;
+  }
 
-          For 20Mg:
-          1           D  >  1.017
-          2  1.005 <  D  <= 1.017
-          3  0.993 <  D  <= 1.005
-          4  0.982 <  D  <= 0.993
-          5  0.982 <= D
-           **********************/
-
-          if (dopplerFactor[i][j][k] > dg1) {
-            group = 1;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
-          }
-          if (dopplerFactor[i][j][k] > dg2 && dopplerFactor[i][j][k] <= dg1) {
-            group = 2;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
-          }
-          if (dopplerFactor[i][j][k] > dg3 && dopplerFactor[i][j][k] <= dg2) {
-            group = 3;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
-          }
-          if (dopplerFactor[i][j][k] > dg4 && dopplerFactor[i][j][k] <= dg3) {
-            group = 4;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
-          }
-          if (dopplerFactor[i][j][k] > dg5 && dopplerFactor[i][j][k] <= dg4) {
-            group = 5;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
-          }
-          if (dopplerFactor[i][j][k] <= dg5) {
-            group = 6;
-            fprintf(group_map, "%2d     %d     %2d     %d\n", i, j, k, group);
-          }
-        }
-      }
-  fclose(df_map);
-  fclose(group_map);
-
-  // write histogram to disk
-  char title[132];
-  sprintf(title, "DopplerFactor.root");
-  TFile f(title, "recreate");
-  d->GetXaxis()->SetTitle("Tigress ID");
-  d->GetYaxis()->SetTitle("CsI ID");
-  d->SetMaximum(1.06);
-  d->SetMinimum(0.94);
-  d->SetOption("COLZ");
-  d->Write();
-  d1->Write();
+  return ch_out;
 }

@@ -17,8 +17,10 @@ all:
 	cd tree2binnedavgtxt && make
 	cd tree2mca && make
 	cd tree2doppler_map && make
+	cd tree2doppler_2Dmap && make
 	cd tree2mca_gated && make
 	cd tree2mca_group && make
+	cd tree2mca_group_2Dmap && make
 	cd tree2tree && make
 	cd tree_gate_intensity && make
 	cd txt2binnedavgtxt && make

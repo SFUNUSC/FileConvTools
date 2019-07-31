@@ -24,7 +24,7 @@ double FWHM_response(double);
 FILE *config,*customFile;
 char cfgstr[256],str1[256],str2[256];
 
-// tree2doppler_map parameters
+// tree2doppler_2Dmap parameters
 char sort_path[256],weight_path[256],inp_filename[256],sort_tree_name[256],out_filename[256];
 char group_file[256],pos_path[256],col_path[256],csi_path[256]; // group sorting stuff
 bool listMode=false; //whether to sort tree files from a list
@@ -42,7 +42,7 @@ TApplication *theApp;
 TRandom3 *randGen;
 
 // group stuff
-int  group_map[17][5][129];
+int  group_map[17][5][129][129];
 TLeaf *posLeaf,*colLeaf,*csiLeaf,*csiELeaf;
 TBranch *posBranch,*colBranch,*csiBranch,*csiEBranch;
 // group hist
@@ -50,8 +50,8 @@ int groupHist[NSPECT][S32K];
 double dg1,dg2,dg3,dg4,dg5;
 
 // doppler map stuff
-double dopplerFactor[17][4][129];
-double counter[17][4][129];
+double dopplerFactor[17][4][129][129];
+double counter[17][4][129][129];
 TH2D *d;
 TH1D *d1;
 
